@@ -7,8 +7,9 @@ import os
 import fiona
 import rasterio
 from rasterio.features import shapes
-from shapely.geometry import mapping
-from shapely.geometry import shape
+from shapely.geometry import mapping, shape
+from shapely.ops import cascaded_union
+
 
 
 def create_geometry(raster_input):
@@ -29,21 +30,38 @@ def create_geometry(raster_input):
             for i, (s, v)
             in enumerate(
             shapes(image, mask=mask, transform=src.affine)))
-        pixels.append(list(results))
-    print(len(pixels))
-    return pixels
+
+    return results
+
+
+def merge_polygons(geometries):
+    """
+    Merge polygons that are neighbors
+    :param geometries: shapely geometries (polygons)
+    :return: merged polygons
+    """
+
+    results = []
+
+    for polygon in geometries:
+        polygons = shape(polygon['geometry'])
+        results.append(polygons)
+
+    print("Creating union from polygons...")
+    return cascaded_union(results)
 
 
 def shape_builder(raster_input, output_path):
     "Builds a polygon out of the pixel polygons"
 
     # polygons = []
-    polygons = create_geometry(raster_input)
+    polygons = list(create_geometry(raster_input))
+    polygons = merge_polygons(polygons)
+    polygonalize_geometry(polygons, output_path)
 
-    for polygon in polygons:
-        polygon = shape(polygon[0]['geometry'])
-        print(polygon)
-        polygonalize_geometry(polygon, output_path)
+    #for polygon in polygons:
+    ##
+        #input(polygon)
 
 
 def polygonalize_geometry(geometry, output_path):
@@ -62,10 +80,11 @@ def polygonalize_geometry(geometry, output_path):
 
     # write the shapefile
     with fiona.open(output_file, 'w', 'ESRI Shapefile', schema) as c:
-        c.write({
-            'geometry': mapping(geometry),
-            'properties': {'id': 123}
-        })
+        for polygon in geometry:
+            c.write({
+                'geometry': mapping(shape(polygon['geometry'])),
+                'properties': {'id': 123}
+            })
 
 
 def main_menu():
